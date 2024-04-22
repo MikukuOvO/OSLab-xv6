@@ -65,3 +65,7 @@
 //   TRAPFRAME (p->trapframe, used by the trampoline)
 //   TRAMPOLINE (the same page as in the kernel)
 #define TRAPFRAME (TRAMPOLINE - PGSIZE)
+
+// Added
+#define BALLOC_OFFSET (16*1024*1024)
+#define BALLOC_START (PHYSTOP - BALLOC_OFFSET)

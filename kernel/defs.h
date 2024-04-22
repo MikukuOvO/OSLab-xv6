@@ -9,6 +9,14 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
+// balloc.c
+void            bmeminit(void);
+void*           bmemalloc(uint64 nbytes);
+void            bmemfree(void *);
+void            showblock(void);
+void            bmemprint(void);
+
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
