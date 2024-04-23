@@ -11,11 +11,11 @@
 
 struct header{
     struct header *pre, *nxt;
-    int siz;
+    int siz, data_siz; // 防止内存泄漏
     int is_used;
 };
 
-#define HEAD_SIZE sizeof(struct header) // 24
+#define HEAD_SIZE sizeof(struct header) // 32，64位8对齐方式
 
 struct {
     struct spinlock lock;
@@ -31,6 +31,7 @@ bmeminit(){
     struct header *h = bmem.freelist;
     h->pre = h->nxt = 0;
     h->siz = BALLOC_OFFSET - HEAD_SIZE;
+    h->data_siz = 0;
     h->is_used = 0;
 }
 
@@ -45,7 +46,7 @@ bmemalloc(uint64 nbytes){
             uint64 curdelta = cur->siz - nbytes;
             if(curdelta < mindelta){
                 mindelta = curdelta;
-                printf("curdelta=%d\n", curdelta);
+                // printf("curdelta=%d\n", curdelta);
                 pos = cur;
             }
         }
@@ -59,10 +60,13 @@ bmemalloc(uint64 nbytes){
             newpos->nxt = pos->nxt;
             newpos->siz = res;
             newpos->is_used = 0;
+            newpos->data_siz = 0;
             if(pos->nxt) pos->nxt->pre = newpos;
             pos->nxt = newpos;
+            pos->data_siz = nbytes;
+            pos->siz = nbytes;
         }
-        pos->siz = nbytes;
+        else pos->data_siz = nbytes;
         pos = (struct header *)((uint64)pos + HEAD_SIZE);
         memset(pos, 5, nbytes); // fill with junk
     }
@@ -74,6 +78,7 @@ void
 bmemfree(void *ad){
     struct header *pos = (struct header *)((uint64)ad - HEAD_SIZE);
     pos->is_used = 0;
+    pos->data_siz = 0;
     struct header *newpos = pos->nxt;
     if(newpos && newpos->is_used == 0){
         if(newpos->nxt) newpos->nxt->pre = pos;
@@ -93,7 +98,7 @@ showblock(){
     acquire(&bmem.lock);
     struct header *cur = bmem.freelist;
     while(cur){
-        printf("Block Size: %d, Is_used: %d\n", cur->siz, cur->is_used);
+        printf("Block Size: %d, Is_used: %d, Data Size: %d\n", cur->siz, cur->is_used, cur->data_siz);
         cur = cur->nxt;
     }
     release(&bmem.lock);
