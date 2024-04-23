@@ -12,10 +12,10 @@
 struct header{
     struct header *pre, *nxt;
     int siz;
-    bool is_used;
+    int is_used;
 };
 
-#define HEAD_SIZE sizeof(struct header)
+#define HEAD_SIZE sizeof(struct header) // 24
 
 struct {
     struct spinlock lock;
@@ -31,7 +31,7 @@ bmeminit(){
     struct header *h = bmem.freelist;
     h->pre = h->nxt = 0;
     h->siz = BALLOC_OFFSET - HEAD_SIZE;
-    h->is_used = false;
+    h->is_used = 0;
 }
 
 void*
@@ -41,23 +41,24 @@ bmemalloc(uint64 nbytes){
     struct header *pos = 0;
     uint64 mindelta = BALLOC_OFFSET;
     for(struct header *cur = bmem.freelist; cur; cur = cur->nxt){
-        if(cur->is_used == false && cur->siz >= nbytes){
+        if(cur->is_used == 0 && cur->siz >= nbytes){
             uint64 curdelta = cur->siz - nbytes;
             if(curdelta < mindelta){
                 mindelta = curdelta;
+                printf("curdelta=%d\n", curdelta);
                 pos = cur;
             }
         }
     }
     if(pos>0){
-        pos->is_used = true;
-        uint64 res = pos->siz - nbytes - HEAD_SIZE;
+        pos->is_used = 1;
+        int res = pos->siz - nbytes - HEAD_SIZE;
         if(res > 0){ // 剩余数据块部分大于 HEAD_SIZE 的大小，能够再分裂出一个新数据块
             struct header *newpos = (struct header*)((uint64)pos + nbytes + HEAD_SIZE);
             newpos->pre = pos;
             newpos->nxt = pos->nxt;
             newpos->siz = res;
-            newpos->is_used = false;
+            newpos->is_used = 0;
             if(pos->nxt) pos->nxt->pre = newpos;
             pos->nxt = newpos;
         }
@@ -72,25 +73,24 @@ bmemalloc(uint64 nbytes){
 void
 bmemfree(void *ad){
     struct header *pos = (struct header *)((uint64)ad - HEAD_SIZE);
-    pos->is_used = false;
+    pos->is_used = 0;
     struct header *newpos = pos->nxt;
-    if(newpos && newpos->is_used == false){
+    if(newpos && newpos->is_used == 0){
         if(newpos->nxt) newpos->nxt->pre = pos;
         pos->nxt = newpos->nxt;
-        pos->siz = pos->siz + newpos->siz + HEAD_SIZE;
+        pos->siz += newpos->siz + HEAD_SIZE;
     }
     newpos = pos->pre;
-    if(newpos && newpos->is_used == false){
+    if(newpos && newpos->is_used == 0){
         if(pos->nxt) pos->nxt->pre = newpos;
         newpos->nxt = pos->nxt;
-        newpos->siz = newpos->siz + pos->siz + HEAD_SIZE;
+        newpos->siz += pos->siz + HEAD_SIZE;
     }
 }
 
 void
 showblock(){
     acquire(&bmem.lock);
-    printf("Start Print\n");
     struct header *cur = bmem.freelist;
     while(cur){
         printf("Block Size: %d, Is_used: %d\n", cur->siz, cur->is_used);
@@ -99,16 +99,51 @@ showblock(){
     release(&bmem.lock);
 }
 
+// Test Cases
 void
 bmemprint(){
-    static char *parray[5];
+    printf("HEAD_SIZE=%d\n",HEAD_SIZE);
     showblock();
+    printf("--------------------Test 1--------------------\n");
+    printf("Test for basic memory allocation\n");
+    static char *parray[5];
     for(int i=0;i<4;++i){
+        printf("~~~~~~~~~~~~~~~~~~Allocate %d bytes~~~~~~~~~~~~~~~~~~\n", i+1);
         parray[i] = bmemalloc(i+1);
         showblock();
     }
     for(int i=0;i<4;++i){
+        printf("~~~~~~~~~~~~~~~~~~Free %d bytes~~~~~~~~~~~~~~~~~~\n", i+1);
         bmemfree(parray[i]);
         showblock();
     }
+
+    printf("--------------------Test 2--------------------\n");
+    printf("Test for memory allocate strategy\n");
+    static int c[4] = {3, 1, 2, 5};
+    for(int i=0;i<4;++i){
+        printf("~~~~~~~~~~~~~~~~~~Allocate %d bytes~~~~~~~~~~~~~~~~~~\n", c[i]);
+        parray[i] = bmemalloc(c[i]);
+        showblock();
+    }
+    printf("~~~~~~~~~~~~~~~~~~Free %d bytes~~~~~~~~~~~~~~~~~~\n", c[0]);
+    bmemfree(parray[0]);
+    showblock();
+    printf("~~~~~~~~~~~~~~~~~~Free %d bytes~~~~~~~~~~~~~~~~~~\n", c[2]);
+    bmemfree(parray[2]);
+    showblock();
+    printf("~~~~~~~~~~~~~~~~~~Allocate %d bytes~~~~~~~~~~~~~~~~~~\n", c[1]);
+    parray[4] = bmemalloc(c[1]);
+    showblock();
+    printf("~~~~~~~~~~~~~~~~~~Free %d bytes~~~~~~~~~~~~~~~~~~\n", c[2]);
+    bmemfree(parray[3]);
+    showblock();
+    printf("~~~~~~~~~~~~~~~~~~Free %d bytes~~~~~~~~~~~~~~~~~~\n", c[2]);
+    bmemfree(parray[4]);
+    showblock();
+    printf("~~~~~~~~~~~~~~~~~~Free %d bytes~~~~~~~~~~~~~~~~~~\n", c[2]);
+    bmemfree(parray[1]);
+    showblock();
+    /*
+    */
 }

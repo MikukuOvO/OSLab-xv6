@@ -27,7 +27,8 @@ void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
-  freerange(end, (void*)PHYSTOP);
+  // freerange(end, (void*)PHYSTOP);
+  freerange(end, (void*)PHYSTOP - BALLOC_OFFSET);
 }
 
 void
@@ -48,7 +49,7 @@ kfree(void *pa)
 {
   struct run *r;
 
-  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP - BALLOC_OFFSET)
     panic("kfree");
 
   // Fill with junk to catch dangling refs.
